@@ -77,9 +77,12 @@ class Conversation:
         return final_text.strip()
 
     def iter_messages(self):
-        for message in self.messages:
-            yield self.format_message(message), message["role"]
-
+        for i, message in enumerate(self.messages):
+            formatted_message = self.format_message(message)
+            if i == len(self.messages) - 1 and message["role"] == self.bot_role:
+                formatted_message = formatted_message.rstrip()
+            yield formatted_message, message["role"]
+            
     @classmethod
     def from_template(cls, file_name):
         with open(file_name, encoding="utf-8") as r:
@@ -100,3 +103,4 @@ class Conversation:
                 "role": role_mapping.get(message["role"], message["role"]),
                 "content": message["content"]
             })
+        self.messages[-1]['content'] = self.messages[-1]['content'].rstrip()

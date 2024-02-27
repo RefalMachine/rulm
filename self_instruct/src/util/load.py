@@ -13,17 +13,40 @@ def load_saiga(
     torch_compile: bool = False,
     torch_dtype: str = None,
     is_lora: bool = True,
-    use_flash_attention_2: bool = False
+    use_flash_attention_2: bool = True
 ):
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    except:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+
+    print("PAD: ", tokenizer.pad_token_id, tokenizer.pad_token)
+    print("BOS: ", tokenizer.bos_token_id, tokenizer.bos_token)
+    print("EOS: ", tokenizer.eos_token_id, tokenizer.eos_token)
+    print("UNK: ", tokenizer.unk_token_id, tokenizer.unk_token)
+    print("SEP: ", tokenizer.sep_token_id, tokenizer.sep_token)
+
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = "<unk>"
+    tokenizer.pad_token_id = 0
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
+
+    print("PAD: ", tokenizer.pad_token_id, tokenizer.pad_token)
+    print("BOS: ", tokenizer.bos_token_id, tokenizer.bos_token)
+    print("EOS: ", tokenizer.eos_token_id, tokenizer.eos_token)
+    print("UNK: ", tokenizer.unk_token_id, tokenizer.unk_token)
+    print("SEP: ", tokenizer.sep_token_id, tokenizer.sep_token)
+    
     generation_config = GenerationConfig.from_pretrained(model_name)
 
     if not is_lora:
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             load_in_8bit=True,
-            device_map="auto"
+            device_map="auto",
+            use_flash_attention_2=use_flash_attention_2
         )
         model.eval()
         return model, tokenizer, generation_config
@@ -57,7 +80,7 @@ def load_saiga(
             model = AutoModelForCausalLM.from_pretrained(
                 config.base_model_name_or_path,
                 torch_dtype=torch_dtype,
-                load_in_8bit=True,
+                load_in_8bit=False,
                 device_map="auto",
                 use_flash_attention_2=use_flash_attention_2
             )

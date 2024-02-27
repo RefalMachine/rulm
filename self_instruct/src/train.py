@@ -14,6 +14,7 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 from src.dataset import ChatDataset
 from src.util.dl import set_random_seed, fix_tokenizer, fix_model
 from src.util.io import read_jsonl
+import transformers
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -90,6 +91,8 @@ def custom_prepare_model_for_int8_training(
         setattr(model, output_embedding_layer_name, CastOutputToFloat(output_embedding_layer))
 
     model.gradient_checkpointing_enable()
+    #model.model.gradient_checkpointing  = True
+    #model._set_gradient_checkpointing(model, value=True)
 
     return model
 
@@ -120,8 +123,8 @@ def train(
     callbacks = [SavePeftModelCallback] if lora_config else []
     training_args = TrainingArguments(
         output_dir=output_dir,
-        save_total_limit=1,
-        load_best_model_at_end=True,
+        save_total_limit=20,
+        load_best_model_at_end=False,
         report_to=report_to,
         ddp_find_unused_parameters=False if ddp else None,
         deepspeed=deepspeed_config,
@@ -135,8 +138,30 @@ def train(
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
         trainer_config["gradient_accumulation_steps"] = gradient_accumulation_steps
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    except:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    #tokenizer = AutoTokenizer.from_pretrained(model_name)
     model_config = AutoConfig.from_pretrained(model_name)
+
+    #tokenizer.padding_side = "right"
+    #tokenizer.add_bos_token = False
+    #tokenizer.add_eos_token = False
+
+    '''
+    tokenizer.padding_side = "left"
+    tokenizer.clean_up_tokenization_spaces = False
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
+
+    print("Vocab size: ", tokenizer.vocab_size)
+    print("PAD: ", tokenizer.pad_token_id, tokenizer.pad_token)
+    print("BOS: ", tokenizer.bos_token_id, tokenizer.bos_token)
+    print("EOS: ", tokenizer.eos_token_id, tokenizer.eos_token)
+    print("UNK: ", tokenizer.unk_token_id, tokenizer.unk_token)
+    print("SEP: ", tokenizer.sep_token_id, tokenizer.sep_token)
+    '''
     tokenizer = fix_tokenizer(tokenizer, model_config)
     tokenizer.save_pretrained(output_dir)
 
@@ -187,10 +212,11 @@ def train(
             load_in_8bit=True,
             device_map=device_map,
             torch_dtype=torch_dtype,
-            use_flash_attention_2=use_flash_attention_2
+            use_flash_attention_2=False
         )
+        print('MODEL:' + str(model.model.__class__))
         model = fix_model(model, tokenizer, use_resize=False)
-        model = custom_prepare_model_for_int8_training(model)
+        model = custom_prepare_model_for_int8_training(model, output_embedding_layer_name='')
 
     elif load_in_4bit:
         assert not load_in_8bit
@@ -212,8 +238,17 @@ def train(
         model = prepare_model_for_kbit_training(model)
 
     else:
-        model = model_types[model_type].from_pretrained(model_name)
-        model = fix_model(model, tokenizer)
+        model = model_types[model_type].from_pretrained(
+            model_name, 
+            device_map=device_map, 
+            torch_dtype=torch_dtype,
+            use_flash_attention_2=True
+        )
+        model = fix_model(model, tokenizer, use_resize=False)
+        model = custom_prepare_model_for_int8_training(model)
+        #model._set_gradient_checkpointing(model, value=True)
+        #model.model.gradient_checkpointing  = True
+        #model.gradient_checkpointing_enable()
 
     # Default model generation params
     model.config.num_beams = 5
@@ -235,6 +270,13 @@ def train(
         callbacks=callbacks,
         data_collator=data_collator
     )
+
+    class EvaluateFirstStepCallback(transformers.TrainerCallback):
+        def on_step_begin(self, args, state, control, **kwargs):
+            if state.global_step == 0:
+                control.should_evaluate = True
+
+    #trainer.add_callback(EvaluateFirstStepCallback())
 
     if trainer_config.get("report_to", "wandb") == "wandb":
         wandb.init(project="rulm_self_instruct", name=config_file)

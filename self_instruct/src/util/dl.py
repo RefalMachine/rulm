@@ -26,6 +26,13 @@ def _check_candidates(candidates, bad_ids, tokenizer, backup_token):
 
 
 def fix_tokenizer(tokenizer, model_config):
+    print("Vocab size: ", tokenizer.vocab_size)
+    print("PAD: ", tokenizer.pad_token_id, tokenizer.pad_token)
+    print("BOS: ", tokenizer.bos_token_id, tokenizer.bos_token)
+    print("EOS: ", tokenizer.eos_token_id, tokenizer.eos_token)
+    print("UNK: ", tokenizer.unk_token_id, tokenizer.unk_token)
+    print("SEP: ", tokenizer.sep_token_id, tokenizer.sep_token)
+    
     bad_ids = (None, tokenizer.vocab_size)
 
     special_tokens = dict()

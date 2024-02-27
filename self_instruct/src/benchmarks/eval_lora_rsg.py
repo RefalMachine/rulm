@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Tuple
 import fire
 
-from src.eval_rsg import (
+from src.benchmarks.eval_zs_rsg import (
     predict_danetqa,
     predict_rcb,
     predict_terra,
@@ -79,10 +79,16 @@ def main(
 ):
     predictions_dir = Path(predictions_dir)
 
-    model, tokenizer, generation_config = load_saiga(model_name)
+    model, tokenizer, generation_config = load_saiga(model_name, use_flash_attention_2=True)
     generation_config.no_repeat_ngram_size = 64
-    generation_config.temperature = 0.01
-
+    generation_config.max_tokens = 2048
+    generation_config.temperature = 0.1
+    generation_config.remove_invalid_values = False
+    #generation_config.repetition_penalty = 1.0
+    generation_config.do_sample = True
+    #generation_config.num_beams = 1
+    print(generation_config)
+    
     def predict_saiga_zero_shot_bound(batch):
         generation_config.max_new_tokens = 256
         return predict_saiga_zero_shot(
